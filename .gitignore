@@ -1,0 +1,5 @@
+/venv/
+.env
+LICENSE
+requirements.txt
+docker-compose.yml
