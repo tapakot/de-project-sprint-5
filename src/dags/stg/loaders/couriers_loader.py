@@ -10,8 +10,8 @@ from lib import PgConnect
 from stg.pg_saver import PgSaver
 from lib.dict_util import json2str
 
-class DeliveriesOriginRepository:
-    def list_deliveries(self, offset: int, log: Logger, limit) -> List[Dict]:
+class CouriersOriginRepository:
+    def list_couriers(self, offset: int, log: Logger, limit) -> List[Dict]:
         nickname = 'tapakot'
         cohort = '49'
         api_key = '25c27781-8fde-4b30-a22e-524044a7580f'
@@ -24,12 +24,10 @@ class DeliveriesOriginRepository:
 
         base_url = "https://d5d04q7d963eapoepsqr.apigw.yandexcloud.net"
 
-        deliveries = []
+        couriers = []
 
         for _ in range(limit):
             params = { # "restaurant_id" : restaurant_id, # без указания - все доступные
-                    "from" : '2020-01-01 00:00:00' , # '%Y-%m-%d %H:%M:%S'
-                    "to" : '2050-01-01 00:00:00', # '%Y-%m-%d %H:%M:%S'
                     "sort_field" : "date", # "_id" по order_id, "date" по order_ts
                     "sort_direction" : "asc", # "asc", "desc"
                     #"limit" : limit,
@@ -37,39 +35,35 @@ class DeliveriesOriginRepository:
                     }
             
             log.info(f"Offset is: {offset}")
-            response = requests.get(f'{base_url}/deliveries', params=params, headers=headers)
+            response = requests.get(f'{base_url}/couriers', params=params, headers=headers)
             log.info(response.status_code)
             response.raise_for_status()
 
-            new_dels = response.json()
+            new_couriers = response.json()
 
-            if len(new_dels) == 0:
+            if len(new_couriers) == 0:
                 break
 
-            deliveries.extend(new_dels)
-            offset += len(new_dels)
+            couriers.extend(new_couriers)
+            offset += len(new_couriers)
 
-        return deliveries
+        return couriers
         
 
-
-
-
-class DeliveryLoader:
-    WF_KEY = "deliveries_origin_to_stg_workflow"
+class CouriersLoader:
+    WF_KEY = "couriers_origin_to_stg_workflow"
     LAST_LOADED_ID_KEY = "last_loaded_offset"
     _LOG_THRESHOLD = 10
-    _SESSION_LIMIT = 50
+    _SESSION_LIMIT = 5
 
     def __init__(self, pg_dest: PgConnect, pg_saver: PgSaver, log: Logger) -> None:
         self.pg_dest = pg_dest
-        self.origin = DeliveriesOriginRepository()
-        #self.stg = DeliveryDestRepository()
+        self.origin = CouriersOriginRepository()
         self.pg_saver = pg_saver
         self.settings_repository = StgEtlSettingsRepository()
         self.log = log
 
-    def load_deliveries(self):
+    def load_couriers(self):
         # открываем транзакцию.
         # Транзакция будет закоммичена, если код в блоке with пройдет успешно (т.е. без ошибок).
         # Если возникнет ошибка, произойдет откат изменений (rollback транзакции).
@@ -83,8 +77,8 @@ class DeliveryLoader:
 
             # Вычитываем очередную пачку объектов.
             last_loaded_offset = wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]
-            load_queue = self.origin.list_deliveries(last_loaded_offset + 1, self.log, self._SESSION_LIMIT)
-            self.log.info(f"Found {len(load_queue)} deliveries to load.")
+            load_queue = self.origin.list_couriers(last_loaded_offset + 1, self.log, self._SESSION_LIMIT)
+            self.log.info(f"Found {len(load_queue)} couriers to load.")
 
             if not load_queue:
                 self.log.info("Quitting.")
@@ -92,11 +86,11 @@ class DeliveryLoader:
 
             i = 0
             for d in load_queue:
-                self.pg_saver.save_delivery(conn, str(d["delivery_id"]), d["order_ts"], d)
+                self.pg_saver.save_courier(conn, str(d["_id"]), d)
 
                 i += 1
                 if i % self._LOG_THRESHOLD == 0:
-                    self.log.info(f"processed {i} documents of {len(load_queue)} while syncing deliveries.")
+                    self.log.info(f"processed {i} documents of {len(load_queue)} while syncing couriers.")
 
             # Сохраняем прогресс.
             # Мы пользуемся тем же connection, поэтому настройка сохранится вместе с объектами,
@@ -106,4 +100,3 @@ class DeliveryLoader:
             self.settings_repository.save_setting(conn, wf_setting.workflow_key, wf_setting_json)
 
             self.log.info(f"Load finished on {wf_setting.workflow_settings[self.LAST_LOADED_ID_KEY]}")
-

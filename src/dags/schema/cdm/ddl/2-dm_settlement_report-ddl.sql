@@ -16,6 +16,6 @@ CREATE TABLE cdm.dm_settlement_report (
 	CONSTRAINT dm_settlement_report_orders_count_check CHECK ((orders_count >= 0)),
 	CONSTRAINT dm_settlement_report_orders_total_sum_check CHECK ((orders_total_sum >= (0)::numeric)),
 	CONSTRAINT dm_settlement_report_restaurant_reward_sum_check CHECK ((restaurant_reward_sum >= (0)::numeric)),
-	CONSTRAINT dm_settlement_report_settlement_date_check CHECK (((settlement_date >= '2022-01-01'::date) AND (settlement_date < '2500-01-01'::date))),
+	CONSTRAINT dm_settlement_report_settlement_date_check CHECK (((settlement_date >= '2022-01-01'::date) AND (settlement_date < '2050-01-01'::date))),
 	CONSTRAINT dm_settlement_report_unique_check UNIQUE (settlement_date, restaurant_id)
 );

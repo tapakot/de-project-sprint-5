@@ -7,8 +7,10 @@ from airflow.operators.empty import EmptyOperator
 from dds.loaders.dm_users_loader import UserLoader
 from dds.loaders.dm_restaurants_loader import RestaurantLoader
 from dds.loaders.dm_timestamps_loader import TimestampLoader
+from dds.loaders.dm_couriers_loader import CourierLoader
 from dds.loaders.dm_products_loader import ProductLoader
 from dds.loaders.dm_orders_loader import OrderLoader
+from dds.loaders.dm_deliveries_loader import DeliveryLoader
 from dds.loaders.fct_product_sales_loader import SalesLoader
 from lib import ConnectionBuilder
 
@@ -43,6 +45,11 @@ def dds_dag():
         loader = TimestampLoader(dwh_pg_connect, log)
         loader.load_timestamps()
 
+    @task(task_id="dm_couriers_load")
+    def load_couriers():
+        loader = CourierLoader(dwh_pg_connect, log)
+        loader.load_couriers()
+
     @task(task_id="dm_products_load")
     def load_products():
         loader = ProductLoader(dwh_pg_connect, log)
@@ -52,6 +59,11 @@ def dds_dag():
     def load_orders():
         loader = OrderLoader(dwh_pg_connect, log)
         loader.load_orders()
+
+    @task(task_id="dm_deliveries_load")
+    def load_deliveries():
+        loader = DeliveryLoader(dwh_pg_connect, log)
+        loader.load_deliveries()
 
     @task(task_id="fct_sales_load")
     def load_sales():
@@ -64,13 +76,15 @@ def dds_dag():
     users_task = load_users()
     restaurants_task = load_restaurants()
     timestamps_task = load_timestamps()
+    couriers_task = load_couriers()
     products_task = load_products()
     orders_task = load_orders()
+    deliveries_task = load_deliveries()
     sales_task = load_sales()
 
     # Далее задаем последовательность выполнения тасков.
     # Т.к. таск один, просто обозначим его здесь.
-    [users_task, restaurants_task, timestamps_task] >> empty_task >> [products_task, orders_task] >> sales_task # type: ignore
+    [users_task, restaurants_task, timestamps_task, couriers_task] >> empty_task >> [products_task, orders_task] >> deliveries_task >> sales_task # type: ignore
 
 
 dds_dag = dds_dag()

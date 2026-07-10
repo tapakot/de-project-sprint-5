@@ -63,3 +63,41 @@ class PgSaver:
                     "update_ts": update_ts
                 }
             )
+
+    def save_delivery(self, conn: Connection, id: str, object_ts: datetime, val: Any):
+        str_val = json2str(val)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                    INSERT INTO stg.deliverysystem_deliveries(object_id, object_value, object_ts)
+                    VALUES (%(id)s, %(val)s, %(object_ts)s)
+                    ON CONFLICT (object_id) DO UPDATE
+                    SET
+                        object_value = EXCLUDED.object_value,
+                        object_ts = EXCLUDED.object_ts,
+                        updated_at = CLOCK_TIMESTAMP();
+                """,
+                {
+                    "id": id,
+                    "val": str_val,
+                    "object_ts": object_ts
+                }
+            )
+
+    def save_courier(self, conn: Connection, id: str, val: Any):
+        str_val = json2str(val)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                    INSERT INTO stg.deliverysystem_couriers(object_id, object_value)
+                    VALUES (%(id)s, %(val)s)
+                    ON CONFLICT (object_id) DO UPDATE
+                    SET
+                        object_value = EXCLUDED.object_value,
+                        updated_at = CLOCK_TIMESTAMP();
+                """,
+                {
+                    "id": id,
+                    "val": str_val
+                }
+            )

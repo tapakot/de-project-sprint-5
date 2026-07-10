@@ -3,7 +3,7 @@ from logging import Logger
 from lib import PgConnect
 from psycopg import Connection
 
-class UserDestRepository:
+class DestRepository:
 
     def load_settlement_report(self, conn: Connection) -> None:
         with conn.cursor() as cur:
@@ -51,11 +51,9 @@ class UserDestRepository:
             )
 
 class SettlementReportLoader:
-    _LOG_THRESHOLD = 2
-
     def __init__(self, pg_dwh: PgConnect, logger: Logger) -> None:
         self.pg_dwh = pg_dwh
-        self.dest = UserDestRepository()
+        self.dest = DestRepository()
         self.logger = logger
 
     def load_settlement_report(self):

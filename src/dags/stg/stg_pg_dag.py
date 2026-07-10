@@ -41,6 +41,7 @@ def stg_bonus_system_dag():
         loader = EventLoader(origin_pg_connect, dwh_pg_connect, log)
         loader.load_events()
 
+
     # Инициализируем объявленные таски.
     ranks_task = load_ranks()
     users_task = load_users()

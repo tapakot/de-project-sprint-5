@@ -10,49 +10,25 @@ from psycopg.rows import class_row
 from pydantic import BaseModel
 
 
-class OrderObj(BaseModel):
-    user_id: int
-    restaurant_id: int
-    timestamp_id: int
-    order_key: str
-    order_status: str
+class CourierObj(BaseModel):
+    origin_id: str
+    name: str
     last_updated: datetime
 
-class OrdersOriginRepository:
+class CouriersOriginRepository:
     def __init__(self, pg: PgConnect) -> None:
         self._db = pg
 
-    def list_orders(self, load_threshold: datetime) -> List[OrderObj]:
-        with self._db.client().cursor(row_factory=class_row(OrderObj)) as cur:
+    def list_couriers(self, load_threshold: datetime) -> List[CourierObj]:
+        with self._db.client().cursor(row_factory=class_row(CourierObj)) as cur:
             cur.execute(
                 """
                     select
-                        du.id as user_id,
-                        dr.id as restaurant_id,
-                        dt.id as timestamp_id,
-                        t.order_key as order_key,
-                        t.order_status as order_status,
-                        t.last_updated as last_updated
-                    from
-                        (select
-                            r.update_ts as last_updated,
-                            r.object_value::json ->> '_id' as order_key,
-                            r.object_value::json ->> 'final_status' as order_status,
-                            (r.object_value::json ->> 'date')::timestamp as timestamp_str,
-                            r.object_value::json -> 'restaurant' ->> 'id' as restaurant_str,
-                            r.object_value::json -> 'user' ->> 'id' as user_str
-                        from stg.ordersystem_orders r
-                        WHERE r.update_ts > %(threshold)s --Пропускаем те объекты, которые уже загрузили.
-                        ORDER BY r.update_ts ASC) as t
-                    join 
-                        (select id, restaurant_id from dds.dm_restaurants where active_to::date = '2099-12-31') as dr 
-                        on t.restaurant_str = dr.restaurant_id
-                    join 
-                        (select id, user_id from dds.dm_users) as du
-                        on t.user_str = du.user_id
-                    join 
-                        (select id, ts from dds.dm_timestamps) as dt
-                        on t.timestamp_str = dt.ts
+                        date_trunc('second', c.updated_at) as last_updated,
+                        c.object_value::json ->> '_id' as origin_id,
+                        c.object_value::json ->> 'name' as name
+                    from stg.deliverysystem_couriers c
+                    WHERE c.updated_at > %(threshold)s --Пропускаем те объекты, которые уже загрузили.
                 """, {
                     "threshold": load_threshold
                 }
@@ -61,38 +37,35 @@ class OrdersOriginRepository:
         return objs
 
 
-class OrderDestRepository:
+class CourierDestRepository:
 
-    def insert_order(self, conn: Connection, order: OrderObj) -> None:
+    def insert_courier(self, conn: Connection, courier: CourierObj) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                    insert into dds.dm_orders (user_id, restaurant_id, timestamp_id, order_key, order_status)
-                    VALUES (%(user_id)s, %(restaurant_id)s, %(timestamp_id)s, %(order_key)s, %(order_status)s);
+                    insert into dds.dm_couriers (origin_id, name)
+                    VALUES (%(origin_id)s, %(name)s);
                 """,
-                {
-                    "user_id": order.user_id,
-                    "restaurant_id": order.restaurant_id,
-                    "timestamp_id": order.timestamp_id,
-                    "order_key": order.order_key,
-                    "order_status": order.order_status
+                {    
+                    "origin_id": courier.origin_id,
+                    "name": courier.name
                 },
             )
 
-class OrderLoader:
-    _LOG_THRESHOLD = 2
+class CourierLoader:
+    _LOG_THRESHOLD = 10
 
-    WF_KEY = "dds_dm_orders_workflow"
+    WF_KEY = "dds_dm_couriers_workflow"
     LAST_LOADED_TS_KEY = "last_loaded_ts"
 
     def __init__(self, pg_dwh: PgConnect, logger: Logger) -> None:
         self.pg_dwh = pg_dwh
-        self.origin = OrdersOriginRepository(pg_dwh)
-        self.dest = OrderDestRepository()
+        self.origin = CouriersOriginRepository(pg_dwh)
+        self.dest = CourierDestRepository()
         self.settings_repository = StgEtlSettingsRepository()
         self.logger = logger
 
-    def load_orders(self):
+    def load_couriers(self):
         # открываем транзакцию.
         # Транзакция будет закоммичена, если код в блоке with пройдет успешно (т.е. без ошибок).
         # Если возникнет ошибка, произойдет откат изменений (rollback транзакции).
@@ -116,15 +89,15 @@ class OrderLoader:
             last_loaded_ts = datetime.fromisoformat(last_loaded_ts_str)
             self.logger.info(f"starting to load from last checkpoint: {last_loaded_ts}")
 
-            load_queue = self.origin.list_orders(last_loaded_ts)
-            self.logger.info(f"Found {len(load_queue)} couriers to load.")
+            load_queue = self.origin.list_couriers(last_loaded_ts)
+            self.logger.info(f"Found {len(load_queue)} orders to load.")
             if not load_queue:
                 self.logger.info("Quitting.")
                 return
 
             # Сохраняем объекты в базу dwh.
             for order in load_queue:
-                self.dest.insert_order(conn, order)
+                self.dest.insert_courier(conn, order)
 
             wf_setting.workflow_settings[self.LAST_LOADED_TS_KEY] = max([t.last_updated for t in load_queue])
             wf_setting_json = json2str(wf_setting.workflow_settings)
